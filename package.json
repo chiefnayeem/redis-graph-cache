@@ -29,6 +29,15 @@
     "atomic",
     "circuit-breaker"
   ],
+  "author": "Mohammed Nayeem <https://reactclockwork.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chiefnayeem/redis-graph-cache.git"
+  },
+  "homepage": "https://redis-graph-cache.vercel.app",
+  "bugs": {
+    "url": "https://github.com/chiefnayeem/redis-graph-cache/issues"
+  },
   "license": "MIT",
   "peerDependencies": {
     "ioredis": "^5.10.1"
