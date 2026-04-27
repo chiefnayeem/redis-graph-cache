@@ -6,7 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js Version](https://img.shields.io/node/v/redis-graph-cache.svg)](https://nodejs.org)
 
-**📚 Full documentation:** [redis-graph-cache.vercel.app](https://redis-graph-cache.vercel.app)
+**📚 Full documentation:** [redis-graph-cache.vercel.app](https://redis-graph-cache.vercel.app)  
+**🔗 GitHub:** [github.com/chiefnayeem/redis-graph-cache](https://github.com/chiefnayeem/redis-graph-cache)
 
 ---
 
