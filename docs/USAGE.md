@@ -113,6 +113,42 @@ schema-level documentation.
 **Reserved field names**: any key starting with `__rse_` is rejected at
 schema registration time to prevent collisions with internal metadata.
 
+**Key naming convention — required for correct TTL resolution**: The string you
+register the entity under in the schema object **must be identical to the prefix
+your `key` function emits before the first `:`**. The TTL resolver identifies
+which schema to consult at write time by extracting that prefix from the Redis
+key. When the two differ, the lookup silently returns `0`, and the cascade-floor
+guard treats `0` as "this entity should live forever" — the key gets no TTL in
+Redis regardless of any `ttl` or `cascadeTTL` you pass.
+
+```ts
+// ✓ Correct — schema name matches key prefix
+const schema = {
+  pageCourse: {
+    type: 'entity' as const,
+    key: (id) => `pageCourse:${id}`,  // prefix 'pageCourse' == schema name
+    ttl: 3600,
+  },
+};
+
+// ✗ Wrong — 'course' prefix does not match schema name 'pageCourse'
+const schema = {
+  pageCourse: {
+    type: 'entity' as const,
+    key: (id) => `course:${id}`,   // prefix 'course' ≠ 'pageCourse'
+    ttl: 3600,  // silently ignored under cascadeTTL; Redis shows "No Limit"
+  },
+};
+```
+
+This rule applies **only to entity schemas that can appear as embedded relations
+inside other entities** (i.e. any schema referenced in another schema's
+`relations` block). `list` and `indexedList` schemas are not subject to it —
+their keys are never passed through the entity-type resolver. Entity schemas
+that are always written in isolation and never embedded as relations are also
+exempt, but the safest convention is to keep schema name == key prefix for all
+entity schemas without exception.
+
 ### Plain list schema
 
 A `list` is a JSON array of ids stored under a single Redis key. Best
@@ -754,6 +790,50 @@ await cache.addIndexedListItem('globalFeed', {}, post, { cascadeTTL: true });
 | Child's own schema TTL is 0 (explicitly persistent) | Left at 0, never demoted. |
 | Child's TTL >= parentTtl already | Left unchanged. |
 | `parentTtl` is `NaN` / negative (shouldn't happen) | Resolver falls back to per-key TTL; no surprise. |
+
+### Two silent "No Limit" traps with `cascadeTTL`
+
+Both of the following produce a Redis key with no TTL (shown as **"No Limit"**
+in Redis tooling) even when `cascadeTTL: true` is set and the call looks
+correct. Neither throws an error — they fail silently.
+
+**Trap 1 — Schema name / key prefix mismatch**
+
+The TTL resolver identifies an entity's schema by slicing the Redis key at the
+**first `:`** and looking up what's to the left. When the schema is registered
+under a name that differs from that prefix, the lookup returns `0`. The
+cascade-floor guard (`if (ownTtl === 0) return 0`) then treats `0` as
+"intentionally persistent" and the key is written with no TTL.
+
+```
+Schema registered as: 'pageCourse'
+Key function produces: 'course:123'
+Resolver extracts:     'course'  ← not found in schema registry
+resolveEntityKeyTTL returns 0  →  cascade preserves 0  →  "No Limit"
+```
+
+Fix: keep every entity's schema name identical to the prefix its `key` function
+produces (see [Key naming convention](#entity-schema)).
+
+**Trap 2 — Missing schema TTL with `defaultTTL: 0`**
+
+If an entity schema omits `ttl`, the resolver falls back to the engine's
+`defaultTTL`. The internal default for `defaultTTL` is `0`. If your engine
+config also does not set `cache.defaultTTL`, the resolver returns `0` for every
+entity without an explicit schema TTL — and the cascade-floor guard again treats
+that `0` as "no expiry".
+
+Fix: always set `ttl` explicitly on entity schemas, **or** ensure your engine
+config has a non-zero `cache.defaultTTL`:
+
+```ts
+new RedisGraphCache(schema, {
+  cache: { defaultTTL: 3600 },
+});
+```
+
+Do not rely on schema-level `ttl` being optional unless you have verified that
+`cache.defaultTTL` is non-zero in your engine configuration.
 
 ### When to use it
 
